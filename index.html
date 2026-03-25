@@ -1,0 +1,168 @@
+<!DOCTYPE html><html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Khawafiles</title><style>
+body{margin:0;font-family:Arial;background:#050505;color:white}
+header{display:flex;justify-content:space-between;align-items:center;padding:15px;background:#0d0d0d;border-bottom:2px solid red}
+.logo{display:flex;align-items:center;gap:10px}
+.logo img{width:35px}
+button{background:black;color:red;border:1px solid red;padding:8px 12px;border-radius:8px;cursor:pointer;transition:0.2s}
+button:hover{background:red;color:black;transform:scale(1.05)}
+input{padding:8px;margin:5px 0;border-radius:6px;border:none;background:#111;color:white}
+.container{padding:15px}
+.card{background:#0d0d0d;padding:15px;margin:10px 0;border-radius:10px;border:1px solid red;animation:fadeIn 0.4s}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.like{color:red;cursor:pointer}
+.admin{color:yellow;cursor:pointer}
+</style></head><body>
+<header>
+  <div class="logo">
+    <img src="logo.png">
+    <h2>Khawafiles</h2>
+  </div>
+  <button onclick="logout()">Logout</button>
+</header><div class="container"><div id="loginBox">
+  <h3>Login / Register</h3>
+  <input id="email" placeholder="Email"><br>
+  <input id="password" type="password" placeholder="Password"><br>
+  <input id="username" placeholder="Username"><br>
+  <button onclick="register()">Register</button>
+  <button onclick="login()">Login</button>
+</div><div id="main" style="display:none;">
+<h3>Upload</h3>
+<input id="fileData" placeholder="Paste Base64 file (sementara tanpa storage)">
+<input id="nama" placeholder="Nama">
+<input id="deskripsi" placeholder="Deskripsi">
+<input id="type" placeholder="Type">
+<button onclick="upload()">Upload</button><hr>
+<input id="searchText" placeholder="Cari...">
+<input id="searchType" placeholder="Type">
+<button onclick="loadFiles()">Search</button>
+<hr>
+<div id="files"></div>
+</div>
+</div><script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDxfd_zWhV70QL97ea7a6W4W_BlySxtKLw",
+  authDomain: "crowdedparty.firebaseapp.com",
+  projectId: "crowdedparty"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth();
+const db = getFirestore();
+
+let usernameGlobal="";
+let isAdmin=false;
+
+onAuthStateChanged(auth, async(user)=>{
+  if(user){
+    document.getElementById("loginBox").style.display="none";
+    document.getElementById("main").style.display="block";
+
+    const snap = await getDoc(doc(db,"users",user.uid));
+    usernameGlobal = snap.data().username;
+    if(usernameGlobal==="admin") isAdmin=true;
+
+    loadFiles();
+  }else{
+    document.getElementById("loginBox").style.display="block";
+    document.getElementById("main").style.display="none";
+  }
+});
+
+window.register=async()=>{
+  const email=document.getElementById("email").value;
+  const password=document.getElementById("password").value;
+  const username=document.getElementById("username").value;
+
+  if(!email||!password||!username) return alert("Isi semua!");
+
+  const user=await createUserWithEmailAndPassword(auth,email,password);
+
+  await setDoc(doc(db,"users",user.user.uid),{username});
+
+  alert("Register berhasil");
+};
+
+window.login=async()=>{
+  const email=document.getElementById("email").value;
+  const password=document.getElementById("password").value;
+  await signInWithEmailAndPassword(auth,email,password);
+};
+
+window.logout=()=>signOut(auth);
+
+window.upload=async()=>{
+  const fileData=document.getElementById("fileData").value;
+  const nama=document.getElementById("nama").value;
+  const deskripsi=document.getElementById("deskripsi").value;
+  const type=document.getElementById("type").value;
+
+  const date=new Date().toLocaleDateString();
+
+  await addDoc(collection(db,"files"),{
+    nama,deskripsi,type,fileData,user:usernameGlobal,date,likes:0
+  });
+
+  alert("Upload sukses");
+};
+
+window.loadFiles=()=>{
+  const filesDiv=document.getElementById("files");
+  const sText=document.getElementById("searchText").value.toLowerCase();
+  const sType=document.getElementById("searchType").value.toLowerCase();
+
+  onSnapshot(collection(db,"files"),(snap)=>{
+    filesDiv.innerHTML="";
+
+    snap.forEach(docSnap=>{
+      const data=docSnap.data();
+      const id=docSnap.id;
+
+      const matchText=data.nama.toLowerCase().includes(sText)||data.deskripsi.toLowerCase().includes(sText);
+      const matchType=sType==""||data.type.toLowerCase().includes(sType);
+
+      if(matchText&&matchType){
+        filesDiv.innerHTML+=`
+        <div class="card">
+          <b>${data.nama}</b><br>
+          ${data.deskripsi}<br>
+          Type: ${data.type}<br>
+          By: ${data.user}<br>
+          Date: ${data.date}<br>
+          ❤️ ${data.likes}
+          <span class="like" onclick="likeFile('${id}',${data.likes})">[Like]</span>
+          ${isAdmin?`<span class="admin" onclick="deleteFile('${id}')"> [Delete]</span>`:""}
+          <br><br>
+          <button onclick="downloadFile('${data.fileData}','${data.nama}')">Download</button>
+        </div>`;
+      }
+    });
+  });
+};
+
+window.likeFile=async(id,likes)=>{
+  await updateDoc(doc(db,"files",id),{likes:likes+1});
+};
+
+window.deleteFile=async(id)=>{
+  if(confirm("Hapus file ini?")){
+    await deleteDoc(doc(db,"files",id));
+  }
+};
+
+window.downloadFile=(data,nama)=>{
+  const a=document.createElement('a');
+  a.href=data;
+  a.download=nama;
+  a.click();
+};
+
+</script></body>
+</html>
